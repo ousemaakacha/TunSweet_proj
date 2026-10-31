@@ -1,0 +1,111 @@
+type OrderItem = {
+  productId: number;
+  title: string;
+  titleEn: string;
+  quantity: number;
+  price: number;
+};
+type OrderCustomer = {
+  name: string;
+  email: string;
+  phone: string;
+  notes: string;
+};
+type ProductImage = {
+  url: string;
+  publicId?: string;
+  source: "cloudinary" | "external";
+  altIt: string;
+  altEn: string;
+  isPrimary: boolean;
+  sortOrder: number;
+};
+type ProductVariant = {
+  name: string;
+  format: string;
+  price: number;
+  stock: number;
+  available: boolean;
+};
+type PickupSlot = { start: string; end: string; capacity: number };
+export type Product = {
+  title: string;
+  titleEn: string;
+  category: string;
+  description: string;
+  descriptionEn: string;
+  price: number;
+  image: string;
+  imagePosition: string;
+  ingredients: string[];
+  ingredientsEn: string[];
+  allergens: string[];
+  allergensEn: string[];
+  available: boolean;
+  stock: number;
+  format: string;
+  formatEn: string;
+  featured: boolean;
+  published?: boolean;
+  images?: ProductImage[];
+  variants?: ProductVariant[];
+};
+export type Order = {
+  title: string;
+  category: string;
+  reference: string;
+  items: OrderItem[];
+  total: number;
+  customer: OrderCustomer;
+  pickupDate: string;
+  pickupSlot: string;
+  paymentMethod: string;
+  paymentStatus: string;
+  paymentRecordedAt?: string;
+  paymentRecordedBy?: string;
+  status: string;
+  idempotencyKey: string;
+};
+export type Review = {
+  title: string;
+  category: string;
+  author: string;
+  text: string;
+  textEn: string;
+  rating: number;
+  approved: boolean;
+  status?: "In attesa" | "Approvata" | "Nascosta";
+};
+export type Customer = {
+  title: string;
+  category: string;
+  name: string;
+  email: string;
+  phone: string;
+  notes: string;
+};
+export type Availability = {
+  title: string;
+  category: string;
+  date: string;
+  enabled: boolean;
+  slots: PickupSlot[];
+  notes: string;
+};
+export type StoreSetting = {
+  title: string;
+  category: string;
+  name: string;
+  email: string;
+  whatsapp: string;
+  instagram: string;
+  pickupMessage: string;
+  contactText: string;
+  start: string;
+  end: string;
+  weekdays: number[];
+  lowStock: number;
+  logo: string;
+  logoPublicId?: string;
+  primaryColor: string;
+};
