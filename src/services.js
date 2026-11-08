@@ -36,6 +36,7 @@ export const authService = {
   resend: (email) => request("/auth/resend", { method: "POST", body: JSON.stringify({ email }), signal: AbortSignal.timeout(45000) }),
   verify: (token) => request("/auth/verify", { method: "POST", body: JSON.stringify({ token }) }),
   session: () => request("/auth/session"),
+  orders: () => request("/account/orders"),
   signOut: () => request("/auth/session", { method: "DELETE" }),
 };
 export function readLocal(key, fallback) {

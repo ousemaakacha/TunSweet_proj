@@ -1,8 +1,141 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowRight, LogOut, ShieldCheck } from "lucide-react";
 import { useStore } from "./state";
 import { authService } from "./services";
+import { Empty } from "./components";
+
+const orderStatusKeys = {
+  "In attesa": "pending",
+  Confermato: "orderConfirmed",
+  "In preparazione": "orderPreparing",
+  "Pronto per il ritiro": "orderReady",
+  Completato: "orderCompleted",
+  Annullato: "orderCancelled",
+};
+
+function MyOrders({ onSessionExpired }) {
+  const { t, lang, local, money } = useStore();
+  const [orders, setOrders] = useState(null);
+  const [error, setError] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    let active = true;
+    setOrders(null);
+    setError(false);
+    authService.orders()
+      .then((rows) => {
+        if (active) setOrders(rows);
+      })
+      .catch((err) => {
+        if (!active) return;
+        if (err.status === 401) onSessionExpired();
+        else setError(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, [attempt, onSessionExpired]);
+  const dates = new Intl.DateTimeFormat(lang === "it" ? "it-IT" : "en-GB", {
+    dateStyle: "long",
+    timeZone: "Europe/Rome",
+  });
+  return (
+    <section
+      className="container account-orders"
+      aria-labelledby="my-orders-title"
+      aria-busy={!orders && !error}
+    >
+      <h2 id="my-orders-title" tabIndex={-1}>
+        {t("myOrders")}
+      </h2>
+      <p className="muted small">{t("myOrdersIntro")}</p>
+      {error ? (
+        <div className="status-box error" role="alert">
+          <p>{t("myOrdersError")}</p>
+          <button
+            className="button secondary"
+            onClick={() => setAttempt((n) => n + 1)}
+          >
+            {t("retry")}
+          </button>
+        </div>
+      ) : !orders ? (
+        <p className="status-box" role="status">{t("loading")}</p>
+      ) : !orders.length ? (
+        <div role="status">
+          <Empty title={t("myOrdersEmpty")} text={t("myOrdersEmptyText")} />
+        </div>
+      ) : (
+        <ol className="account-orders-list">
+          {orders.map((order) => (
+            <li key={order.id}>
+              <article
+                className="confirmation-card"
+                aria-labelledby={`order-${order.id}`}
+              >
+                <h3 id={`order-${order.id}`}>
+                  <span className="sr-only">{t("reference")} </span>
+                  {order.reference}
+                </h3>
+                <dl>
+                  <div className="summary-row">
+                    <dt>{t("orderedOn")}</dt>
+                    <dd>
+                      {order.createdAt ? (
+                        <time dateTime={order.createdAt}>
+                          {dates.format(new Date(order.createdAt))}
+                        </time>
+                      ) : "—"}
+                    </dd>
+                  </div>
+                  <div className="summary-row">
+                    <dt>{t("date")}</dt>
+                    <dd>
+                      <time dateTime={order.pickupDate}>
+                        {dates.format(new Date(`${order.pickupDate}T12:00:00`))}
+                      </time>
+                    </dd>
+                  </div>
+                  <div className="summary-row">
+                    <dt>{t("slot")}</dt><dd>{order.pickupSlot}</dd>
+                  </div>
+                  <div className="summary-row">
+                    <dt>{t("orderStatus")}</dt>
+                    <dd>{t(orderStatusKeys[order.status] || "orderStatusUnknown")}</dd>
+                  </div>
+                  <div className="summary-row">
+                    <dt>{t("payment")}</dt>
+                    <dd>
+                      {t(order.paymentStatus === "paid"
+                        ? "paymentPaid"
+                        : order.paymentStatus === "unpaid"
+                          ? "paymentStatus"
+                          : "orderStatusUnknown")}
+                    </dd>
+                  </div>
+                </dl>
+                <ul className="confirmation-items" aria-label={t("orderProducts")}>
+                  {order.items.map((item) => (
+                    <li className="summary-row" key={item.productId}>
+                      <span>
+                        {item.quantity} × {local(item, "title")}
+                      </span>
+                      <strong>{money(item.price * item.quantity)}</strong>
+                    </li>
+                  ))}
+                </ul>
+                <div className="summary-row total">
+                  <span>{t("total")}</span><strong>{money(order.total)}</strong>
+                </div>
+              </article>
+            </li>
+          ))}
+        </ol>
+      )}
+    </section>
+  );
+}
 
 export function Account() {
   const { t, session, sessionLoading, setSession } = useStore();
@@ -12,6 +145,12 @@ export function Account() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const lock = useRef(false);
+  const sessionExpired = useCallback(() => {
+    setSession(null);
+    setMode("login");
+    setMessage("");
+    setError("authSessionExpired");
+  }, [setSession]);
   const changeMode = (next) => {
     setMode(next);
     setError("");
@@ -91,6 +230,9 @@ export function Account() {
             </h1>
             <p>{t("signedIn")}</p>
             <p>{session.email}</p>
+            <p>
+              <a className="text-button" href="#my-orders-title">{t("myOrders")}</a>
+            </p>
             <Link className="button" to="/catalogo">
               {t("discover")}
               <ArrowRight size={16} />
@@ -220,6 +362,9 @@ export function Account() {
           </p>
         )}
       </div>
+      {!sessionLoading && session?.verified && (
+        <MyOrders key={session.id} onSessionExpired={sessionExpired} />
+      )}
     </section>
   );
 }

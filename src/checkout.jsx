@@ -24,6 +24,7 @@ export function Checkout() {
     setCart,
     refresh,
     session,
+    setSession,
   } = useStore();
   const navigate = useNavigate();
   const [customer, setCustomer] = useState({
@@ -109,6 +110,7 @@ export function Checkout() {
       navigate("/conferma", { state: { order }, replace: true });
     } catch (err) {
       setError(err.message);
+      if (err.status === 401) setSession(null);
       if (["slotFull", "invalidPickup"].includes(err.message)) {
         setSlot("");
         await loadSlots();

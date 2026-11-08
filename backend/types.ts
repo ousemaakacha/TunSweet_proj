@@ -51,6 +51,7 @@ export type Product = {
   variants?: ProductVariant[];
 };
 export type Order = {
+  accountId?: string;
   title: string;
   category: string;
   reference: string;

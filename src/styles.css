@@ -1545,6 +1545,34 @@ textarea::placeholder {
   margin: 25px auto 0;
   font-size: 12px;
 }
+.account-orders {
+  max-width: 720px;
+  margin-top: 45px;
+  overflow-wrap: anywhere;
+}
+.account-orders > p {
+  margin: 15px 0 25px;
+}
+.account-orders-list,
+.account-orders .confirmation-items {
+  list-style: none;
+  padding-left: 0;
+}
+.account-orders .confirmation-card {
+  max-width: none;
+}
+.account-orders .summary-row {
+  gap: 16px;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+.account-orders .summary-row:not(.total) {
+  font-size: 12px;
+}
+.account-orders dd {
+  margin: 0 0 0 auto;
+  text-align: right;
+}
 .about-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

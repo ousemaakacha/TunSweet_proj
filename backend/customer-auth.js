@@ -114,11 +114,18 @@ export async function customerAuth({ directory, sendVerification, now = Date.now
     const value = req.headers.cookie?.split(";").map((v) => v.trim()).find((v) => v.startsWith("ts_account="))?.slice(11);
     return value ? digest(value) : null;
   };
-  router.get("/session", route(async (req, res) => {
-    const session = state.sessions.find((s) => s.hash === sessionHash(req) && s.expiresAt > now());
+  const resolveUser = (req, res, required = false) => {
+    const hash = sessionHash(req);
+    const session = state.sessions.find((s) => s.hash === hash && s.expiresAt > now());
     const user = session && state.users.find((u) => u.id === session.userId && u.verifiedAt);
-    if (!user) fail(401, "authSessionExpired");
-    res.json(publicUser(user));
+    if (!user && (required || hash)) {
+      res.clearCookie("ts_account", cookieOptions);
+      fail(401, "authSessionExpired");
+    }
+    return user ? publicUser(user) : null;
+  };
+  router.get("/session", route(async (req, res) => {
+    res.json(resolveUser(req, res, true));
   }));
   router.delete("/session", route(async (req, res) => {
     state.sessions = state.sessions.filter((s) => s.hash !== sessionHash(req));
@@ -126,7 +133,7 @@ export async function customerAuth({ directory, sendVerification, now = Date.now
     res.clearCookie("ts_account", cookieOptions);
     res.json({ success: true });
   }));
-  return router;
+  return { router, resolveUser };
 }
 
 function smtpVerification(env) {

@@ -47,7 +47,9 @@ Senza Cloudinary resta disponibile l’inserimento di URL HTTPS. Gli asset inizi
 
 Il calendario iniziale è martedì–sabato, 16–20, con fasce di un’ora e quattro ordini per fascia. Sono richiesti due giorni di anticipo; l’orizzonte è di 21 giorni. Le impostazioni del pannello definiscono giorni e orari; ogni data può avere chiusure o fasce proprie.
 
-La creazione ordine verifica nuovamente prezzi, pubblicazione, stock e capienza. La chiave di idempotenza evita duplicati. L’amministrazione non può ridurre una fascia sotto i ritiri già prenotati o rimuovere una fascia occupata. Le note del calendario e dei clienti sono private.
+La creazione ordine verifica nuovamente prezzi, pubblicazione, stock e capienza. La chiave di idempotenza evita duplicati e il retry richiede lo stesso proprietario, oppure un ordine senza proprietario per il checkout ospite. L’amministrazione non può ridurre una fascia sotto i ritiri già prenotati o rimuovere una fascia occupata. Le note del calendario e dei clienti sono private.
+
+Gli ordini effettuati con una sessione cliente verificata vengono associati all’ID account risolto dal server tramite il cookie HttpOnly. Email e identificativi nel corpo della richiesta restano dati non attendibili per stabilire il proprietario. Senza cookie il checkout resta ospite; un cookie invalido, scaduto o revocato produce `401 authSessionExpired` e viene cancellato, così il cliente può accedere di nuovo o riprovare come ospite. Gli ordini esistenti e ospite restano senza associazione: non viene eseguita alcuna attribuzione tramite email.
 
 Stati ordine: In attesa, Confermato, In preparazione, Pronto per il ritiro, Completato, Annullato. Un ordine annullato non può essere riattivato. Il pagamento al ritiro viene registrato separatamente, con data e amministratore; annullare un ordine non restituisce denaro né reintegra lo stock. La dashboard conta gli incassi registrati degli ordini non annullati. Il CSV neutralizza le formule e usa il separatore `;`.
 
@@ -55,8 +57,12 @@ L’indirizzo di casa non deve comparire nelle impostazioni o nei testi pubblici
 
 ## API e conservazione
 
-Le API pubbliche espongono prodotti pubblicati, recensioni approvate, disponibilità e impostazioni pubbliche. Consentono l’invio di ordini e le operazioni di account. Gli elenchi degli ordini, i clienti, le note e tutte le modifiche del catalogo richiedono la sessione amministrativa. Il generatore di validatori proviene dal backend Boolean; modificare `types.ts`, non `schema.js`.
+Le API pubbliche espongono prodotti pubblicati, recensioni approvate, disponibilità e impostazioni pubbliche. Consentono l’invio di ordini e le operazioni di account. `GET /account/orders` richiede una sessione cliente verificata e restituisce soltanto gli ordini con lo stesso `accountId`, dal più recente, senza recapiti, note, chiavi di idempotenza o dati dell’amministratore. L’area «I miei ordini» è nella pagina `/account`. L’elenco completo degli ordini, i clienti, le note e tutte le modifiche del catalogo richiedono la sessione amministrativa. Il campo `accountId` nell’archivio ordini è opzionale per mantenere la compatibilità con gli archivi precedenti. Il generatore di validatori proviene dal backend Boolean; modificare `types.ts`, non `schema.js`.
 
 Le mutazioni sono serializzate nello stesso processo e i file sono salvati con scrittura temporanea e rename. Non esiste una transazione atomica tra più archivi: un arresto tra la scrittura dello stock e quella dell’ordine richiede riconciliazione. Eseguire backup, usare storage persistente e un solo processo. `DATABASE_DIR` cambia la directory degli archivi e permette ai test di usare dati isolati.
 
 Prima di gestire più processi o volumi maggiori, migrare a un database transazionale. Prima della pubblicazione completare identità del titolare, dati fiscali, recapiti, tempi di conservazione e condizioni applicabili, facendo verificare le informative da un professionista.
+
+## Verifiche locali
+
+Dalla root eseguire `npm run check`: rigenera i validatori, esegue i test e compila il frontend. I test degli ordini cliente usano archivi temporanei e il server HTTP reale; verificano due account, accesso anonimo, identità falsificate, sessioni invalide, retry, ordini ospite e storici, aggiornamenti amministrativi e persistenza al riavvio.

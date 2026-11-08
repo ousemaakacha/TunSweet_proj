@@ -17,7 +17,7 @@ async function fixture(t, options = {}) {
   let server;
   async function start() {
     const app = express(); app.use(express.json());
-    app.use("/auth", await customerAuth(config));
+    app.use("/auth", (await customerAuth(config)).router);
     server = await new Promise((resolve) => { const s = app.listen(0, "127.0.0.1", () => resolve(s)); });
   }
   await start();

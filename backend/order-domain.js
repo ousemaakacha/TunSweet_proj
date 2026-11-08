@@ -6,6 +6,7 @@ export function createOrder(
   orders,
   now = new Date(),
   calendar = null,
+  accountId = null,
 ) {
   const fail = (code) => {
     const error = new Error(code);
@@ -22,7 +23,10 @@ export function createOrder(
   const existing = orders.find(
     (o) => o.idempotencyKey === input.idempotencyKey,
   );
-  if (existing) return { order: existing, existing: true };
+  if (existing) {
+    if ((existing.accountId ?? null) !== accountId) fail("invalidOrder");
+    return { order: existing, existing: true };
+  }
   const c = input.customer;
   if (
     !c ||
@@ -95,6 +99,7 @@ export function createOrder(
   return {
     existing: false,
     order: {
+      ...(accountId ? { accountId } : {}),
       title: reference,
       category: "pickup",
       reference,

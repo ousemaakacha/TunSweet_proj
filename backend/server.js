@@ -86,7 +86,8 @@ const fail = (status, message) => {
 const settings = () => ({ ...defaultSettings, ...cache.storesetting[0] });
 const calendar = (all = false) =>
   calendarDays(cache.order, cache.availability, settings(), new Date(), all);
-app.use("/auth", await customerAuth({ directory }));
+const accounts = await customerAuth({ directory });
+app.use("/auth", accounts.router);
 const normalizeReview = (r) => ({
   ...r,
   status: r.status || (r.approved ? "Approvata" : "In attesa"),
@@ -174,12 +175,14 @@ app.get("/reviews/:id", (req, res) => {
 app.post(
   "/orders",
   mutate(async (req, res) => {
+    const user = accounts.resolveUser(req, res);
     const result = createOrder(
       req.body,
       cache.product,
       cache.order,
       new Date(),
       calendar(),
+      user?.id ?? null,
     );
     if (result.existing)
       return res.json({ success: true, order: result.order });
@@ -206,6 +209,25 @@ app.post(
     res.status(201).json({ success: true, order: result.order });
   }),
 );
+app.get("/account/orders", (req, res) => {
+  const user = accounts.resolveUser(req, res, true);
+  res.json(
+    cache.order
+      .filter((order) => order.accountId === user.id)
+      .sort((a, b) => b.id - a.id)
+      .map((order) => ({
+        id: order.id,
+        reference: order.reference,
+        items: order.items,
+        total: order.total,
+        createdAt: order.createdAt,
+        pickupDate: order.pickupDate,
+        pickupSlot: order.pickupSlot,
+        status: order.status,
+        paymentStatus: order.paymentStatus,
+      })),
+  );
+});
 const administration = await adminAuth({ directory });
 const authorize = administration.authorize;
 app.post("/admin/session", administration.login);
