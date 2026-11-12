@@ -8,33 +8,25 @@ import {
 import { api, authService, readLocal, saveLocal } from "./services";
 import { translations } from "./i18n";
 import { shop as shopDefaults } from "../shared/config";
+import { canPurchase, lineKey, purchaseOption } from "../shared/products.js";
+import { cartLines, cartTotal, normalizeCart } from "./cart.js";
 const Store = createContext(null);
 export function StoreProvider({ children }) {
   const [lang, setLang] = useState(() =>
     readLocal("ts-lang", "it") === "en" ? "en" : "it",
   );
-  const [cart, setCart] = useState(() => {
-    const value = readLocal("ts-cart", []);
-    return Array.isArray(value)
-      ? value.filter(
-          (i) =>
-            Number.isSafeInteger(i.id) &&
-            Number.isSafeInteger(i.quantity) &&
-            i.quantity > 0,
-        )
-      : [];
-  });
+  const [cart, setCart] = useState(() => normalizeCart(readLocal("ts-cart", [])));
   const [favorites, setFavorites] = useState(() => {
     const value = readLocal("ts-favorites", []);
     return Array.isArray(value) ? value.filter(Number.isSafeInteger) : [];
   });
   const [session, setSession] = useState(null);
   const [sessionLoading, setSessionLoading] = useState(true);
-  const [products, setProducts] = useState([]),
-    [reviews, setReviews] = useState([]),
-    [loading, setLoading] = useState(true),
-    [error, setError] = useState(false),
-    [toast, setToast] = useState("");
+  const [products, setProducts] = useState([]);
+  const [reviews, setReviews] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [toast, setToast] = useState("");
   const [settings, setSettings] = useState(null);
   const [cookieOpen, setCookieOpen] = useState(
     () => !readLocal("ts-cookies", null),
@@ -118,53 +110,92 @@ export function StoreProvider({ children }) {
       style: "currency",
       currency: "EUR",
     }).format(n);
-  const add = (p, quantity = 1) => {
-    const current = cart.find((i) => i.id === p.id)?.quantity || 0;
-    if (!p.available || current + quantity > p.stock) {
+  function add(product, quantity = 1, variantId) {
+    const key = lineKey(product.id, variantId);
+    const option = purchaseOption(product, variantId);
+    const existingItem = cart.find((item) => lineKey(item.id, item.variantId) === key);
+    let currentQuantity = 0;
+    if (existingItem) {
+      currentQuantity = existingItem.quantity;
+    }
+
+    if (!Number.isSafeInteger(quantity) || quantity < 1) {
       setToast("stockLimit");
       return false;
     }
-    setCart((old) => {
-      const found = old.find((i) => i.id === p.id);
-      return found
-        ? old.map((i) =>
-            i.id === p.id ? { ...i, quantity: i.quantity + quantity } : i,
-          )
-        : [...old, { id: p.id, quantity }];
+
+    if (!canPurchase(product, option, currentQuantity + quantity)) {
+      setToast("stockLimit");
+      return false;
+    }
+
+    setCart((currentCart) => {
+      const savedItem = currentCart.find((item) => lineKey(item.id, item.variantId) === key);
+      let savedQuantity = 0;
+      if (savedItem) {
+        savedQuantity = savedItem.quantity;
+      }
+
+      if (!canPurchase(product, option, savedQuantity + quantity)) {
+        return currentCart;
+      }
+
+      if (!savedItem) {
+        const newItem = { id: product.id, quantity };
+        if (variantId !== undefined) {
+          newItem.variantId = variantId;
+        }
+        return [...currentCart, newItem];
+      }
+
+      return currentCart.map((item) => {
+        if (lineKey(item.id, item.variantId) !== key) {
+          return item;
+        }
+        return { ...item, quantity: item.quantity + quantity };
+      });
     });
     setToast("added");
     return true;
-  };
-  const change = (id, quantity) => {
-    const p = products.find((p) => p.id === id);
-    if (!p || !p.available || quantity < 1 || p.stock < 1) {
+  }
+
+  function change(productId, quantity, variantId) {
+    const product = products.find((product) => product.id === productId);
+    const option = purchaseOption(product, variantId);
+    if (!Number.isSafeInteger(quantity) || quantity < 1 || !canPurchase(product, option)) {
       setToast("stockLimit");
       return;
     }
-    const nextQuantity = Math.min(quantity, p.stock);
-    if (nextQuantity !== quantity) setToast("stockLimit");
-    setCart((old) =>
-      old.map((i) => (i.id === id ? { ...i, quantity: nextQuantity } : i)),
-    );
-  };
-  const remove = (id) => setCart((old) => old.filter((i) => i.id !== id));
+
+    const nextQuantity = Math.min(quantity, option.stock);
+    if (nextQuantity !== quantity) {
+      setToast("stockLimit");
+    }
+
+    const key = lineKey(productId, variantId);
+    setCart((currentCart) => {
+      return currentCart.map((item) => {
+        if (lineKey(item.id, item.variantId) !== key) {
+          return item;
+        }
+        return { ...item, quantity: nextQuantity };
+      });
+    });
+  }
+
+  function remove(productId, variantId) {
+    const key = lineKey(productId, variantId);
+    setCart((currentCart) => {
+      return currentCart.filter((item) => lineKey(item.id, item.variantId) !== key);
+    });
+  }
   const favorite = (id) =>
     setFavorites((old) =>
       old.includes(id) ? old.filter((i) => i !== id) : [...old, id],
     );
-  const lines = cart.map((i) => ({
-    ...i,
-    product: products.find((p) => p.id === i.id),
-  }));
-  const total =
-    lines.reduce(
-      (sum, i) =>
-        sum + (i.product ? Math.round(i.product.price * 100) * i.quantity : 0),
-      0,
-    ) / 100;
-  const invalidCart = lines.some(
-    (i) => !i.product || !i.product.available || i.quantity > i.product.stock,
-  );
+  const lines = cartLines(cart, products);
+  const total = cartTotal(lines);
+  const invalidCart = lines.some((line) => !line.valid);
   const shop = {
     ...shopDefaults,
     ...(settings && {

@@ -3,11 +3,13 @@ import express from "express";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { randomUUID } from "node:crypto";
 import { adminAuth } from "./admin-auth.js";
 import cors from "cors";
 import morgan from "morgan";
 import { validators } from "./schema.js";
 import { createOrder } from "./order-domain.js";
+import { purchaseOption } from "../shared/products.js";
 import { calendarDays, defaultSettings } from "../shared/calendar.js";
 import { validateDomain, orderStatuses } from "./admin-domain.js";
 import { customerAuth } from "./customer-auth.js";
@@ -64,6 +66,14 @@ const save = async (type) => {
   await fs.writeFile(`${file}.tmp`, JSON.stringify(cache[type], null, 2));
   await fs.rename(`${file}.tmp`, file);
 };
+let migratedVariants = false;
+for (const product of cache.product)
+  for (const variant of product.variants || [])
+    if (variant.id === undefined) {
+      variant.id = randomUUID();
+      migratedVariants = true;
+    }
+if (migratedVariants) await save("product");
 let queue = Promise.resolve();
 const mutate = (handler) => (req, res, next) => {
   queue = queue
@@ -186,10 +196,12 @@ app.post(
     );
     if (result.existing)
       return res.json({ success: true, order: result.order });
+    const previousProducts = structuredClone(cache.product);
     for (const i of result.order.items) {
       const p = cache.product.find((p) => p.id === i.productId);
-      p.stock -= i.quantity;
-      p.available = p.stock > 0;
+      const option = purchaseOption(p, i.variantId);
+      option.stock -= i.quantity;
+      option.available = option.stock > 0;
       p.updatedAt = new Date().toISOString();
     }
     cache.order.push(result.order);
@@ -197,11 +209,7 @@ app.post(
       await save("product");
       await save("order");
     } catch (e) {
-      for (const i of result.order.items) {
-        const p = cache.product.find((p) => p.id === i.productId);
-        p.stock += i.quantity;
-        p.available = true;
-      }
+      cache.product = previousProducts;
       cache.order.pop();
       await save("product");
       throw e;
@@ -424,6 +432,8 @@ for (const method of ["post", "put", "delete"])
         }
         try {
           validateDomain(type, data);
+          if (type === "product" && data.variants)
+            data.variants = data.variants.map((variant) => ({ ...variant, id: variant.id ?? randomUUID() }));
           const result = validators[type](data);
           if (!result.valid)
             return fail(400, "Controlla i campi richiesti e il loro formato.");

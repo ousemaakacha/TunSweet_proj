@@ -160,3 +160,83 @@ test("pickup dates respect lead time, weekdays and excluded dates", () => {
     "19:00–20:00",
   ]);
 });
+
+const withVariants = () => ({
+  ...product, price: 99, stock: 0,
+  variants: [
+    { id: "small", name: "Piccola", nameEn: "Small", format: "6 pezzi", formatEn: "6 pieces", price: 7.35, stock: 3, available: true },
+    { id: "large", name: "Grande", format: "12 pezzi", price: 12.4, stock: 4, available: true },
+    { id: "disabled", name: "Sospesa", format: "", price: 1, stock: 10, available: false },
+    { id: "empty", name: "Esaurita", format: "", price: 1, stock: 0, available: true },
+  ],
+});
+
+test("variant prices and snapshots come from the catalog; only identical variants are merged", () => {
+  const p = withVariants();
+  const data = { ...input(), items: [
+    { productId: 1, variantId: "small", quantity: 1, price: 0.01, variantName: "Forged", format: "Forged" },
+    { productId: 1, variantId: "large", quantity: 2, price: -100 },
+    { productId: 1, variantId: "small", quantity: 1 },
+    { productId: 2, quantity: 1 },
+  ] };
+  const { order } = createOrder(data, [p, { ...product, id: 2 }], [], now);
+  assert.equal(order.total, 48);
+  assert.deepEqual(order.items[0], {
+    productId: 1, variantId: "small", variantName: "Piccola", variantNameEn: "Small",
+    title: "Makroudh", titleEn: "Makroudh", format: "6 pezzi", formatEn: "6 pieces", quantity: 2, price: 7.35,
+  });
+  assert.equal(order.items[1].variantId, "large");
+  assert.equal(order.items[1].variantNameEn, "Grande");
+  assert.equal(order.items[1].formatEn, "12 pezzi");
+  assert.equal(order.items[2].variantId, undefined);
+  p.title = "Changed";
+  Object.assign(p.variants[0], { name: "Changed", format: "Changed", price: 100 });
+  assert.equal(order.items[0].variantName, "Piccola");
+  assert.equal(order.items[0].format, "6 pezzi");
+  assert.equal(order.items[0].price, 7.35);
+  assert.equal(createOrder(data, [], [order], now).order, order);
+});
+
+test("missing, unknown, disabled, empty and cross-product variants cannot fall back to the base product", () => {
+  const p = withVariants();
+  const place = (items, catalog = [p]) => createOrder({ ...input(), items }, catalog, [], now);
+  assert.throws(() => place([{ productId: 1, quantity: 1 }]), /variantRequired/);
+  for (const variantId of ["unknown", "disabled", "empty"])
+    assert.throws(() => place([{ productId: 1, variantId, quantity: 1 }]), /stockChanged/);
+  assert.throws(() => place([{ productId: 1, variantId: "small", quantity: 4 }]), /stockChanged/);
+  assert.throws(() => place([
+    { productId: 1, variantId: "small", quantity: 2 },
+    { productId: 1, variantId: "small", quantity: 2 },
+  ]), /stockChanged/);
+  assert.throws(() => place([{ productId: 2, variantId: "small", quantity: 1 }], [p, { ...product, id: 2 }]), /stockChanged/);
+  for (const fields of [{ published: false }, { available: false }])
+    assert.throws(() => place([{ productId: 1, variantId: "small", quantity: 1 }], [{ ...p, ...fields }]), /stockChanged/);
+});
+
+test("variant quantities and identifiers reject malformed values and unsafe duplicate sums", () => {
+  const place = (items) => createOrder({ ...input(), items }, [withVariants()], [], now);
+  for (const quantity of [0, -1, 1.5, "2", null, undefined, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1])
+    assert.throws(() => place([{ productId: 1, variantId: "small", quantity }]), /invalidOrder/);
+  for (const variantId of [null, 0, {}, [], "", "x".repeat(101)])
+    assert.throws(() => place([{ productId: 1, variantId, quantity: 1 }]), /invalidOrder/);
+  assert.throws(() => place([
+    { productId: 1, variantId: "small", quantity: Number.MAX_SAFE_INTEGER },
+    { productId: 1, variantId: "small", quantity: 1 },
+  ]), /invalidOrder/);
+});
+
+test("variant money calculations reject corrupt prices and unsafe totals", () => {
+  const p = withVariants();
+  const data = { ...input(), items: [{ productId: 1, variantId: "small", quantity: 2 }] };
+  for (const price of [-0.001, NaN, Infinity, Number.MAX_SAFE_INTEGER]) {
+    p.variants[0].price = price;
+    assert.throws(() => createOrder(data, [p], [], now), /stockChanged/);
+  }
+  p.variants[0].price = Number.MAX_SAFE_INTEGER / 100;
+  assert.throws(() => createOrder(data, [p], [], now), /invalidOrder/);
+  p.variants[0].price = 0.1;
+  data.items[0].quantity = 3;
+  const { order } = createOrder(data, [p], [], now);
+  assert.equal(order.items[0].price, 0.1);
+  assert.equal(order.total, 0.3);
+});

@@ -18,6 +18,7 @@ import {
   ShoppingBag,
 } from "lucide-react";
 import { useStore } from "./state";
+import { canPurchase, hasVariants, itemDescription, productAvailable, productPrice, purchaseOption } from "../shared/products.js";
 import {
   ProductCard,
   ProductsState,
@@ -215,16 +216,16 @@ export function Catalog() {
   let filtered = products.filter(
     (p) =>
       (category === "all" || p.category === category) &&
-      (available === "all" || p.available) &&
+      (available === "all" || productAvailable(p)) &&
       local(p, "title")
         .toLocaleLowerCase(lang)
         .includes(query.toLocaleLowerCase(lang)),
   );
   filtered.sort((a, b) =>
     sort === "priceLow"
-      ? a.price - b.price
+      ? productPrice(a) - productPrice(b)
       : sort === "priceHigh"
-        ? b.price - a.price
+        ? productPrice(b) - productPrice(a)
         : sort === "nameSort"
           ? local(a, "title").localeCompare(local(b, "title"), lang)
           : Number(b.featured) - Number(a.featured),
@@ -333,18 +334,81 @@ export function Product() {
   return (
     <ProductsState>
       {p ? (
-        <ProductDetail key={p.id} p={p} />
+        <ProductDetail key={p.id} product={p} />
       ) : (
         <Empty title={t("notFound")} text="" />
       )}
     </ProductsState>
   );
 }
-function ProductDetail({ p }) {
-  const { t, local, money, add, favorites, favorite, products } = useStore();
+function ProductDetail({ product }) {
+  const { t, lang, local, money, add, favorites, favorite, products } = useStore();
   const [quantity, setQuantity] = useState(1);
   const [selectedImage, setSelectedImage] = useState(null);
-  const liked = favorites.includes(p.id);
+  const [variantId, setVariantId] = useState("");
+  const productHasVariants = hasVariants(product);
+  const liked = favorites.includes(product.id);
+
+  let selectedOption = product;
+  if (productHasVariants) {
+    selectedOption = purchaseOption(product, variantId);
+  }
+  const available = canPurchase(product, selectedOption);
+  const canAddToCart = canPurchase(product, selectedOption, quantity);
+  const showStartingPrice = productHasVariants && !selectedOption;
+
+  let price = productPrice(product);
+  let formatText = local(product, "format");
+  if (productHasVariants) {
+    formatText = t("chooseVariant");
+  }
+  if (selectedOption) {
+    price = selectedOption.price;
+    const selection = {
+      format: selectedOption.format,
+      formatEn: selectedOption.formatEn,
+    };
+    if (productHasVariants) {
+      selection.variantName = selectedOption.name;
+      selection.variantNameEn = selectedOption.nameEn;
+    }
+    const description = itemDescription(selection, lang);
+    if (description) {
+      formatText = description;
+    }
+  }
+
+  let stockText = t("soldOut");
+  let maxQuantity = 0;
+  if (available) {
+    stockText = `${t("available")} · ${selectedOption.stock} ${t("stock")}`;
+    maxQuantity = selectedOption.stock;
+  } else if (productHasVariants && !variantId) {
+    stockText = t("chooseVariant");
+  }
+
+  let displayedPhoto = product;
+  if (selectedImage) {
+    displayedPhoto = {
+      ...product,
+      image: selectedImage.url,
+      images: [{ ...selectedImage, isPrimary: true }],
+    };
+  }
+
+  function handleVariantChange(event) {
+    setVariantId(event.target.value);
+    setQuantity(1);
+  }
+
+  function handleAddToCart() {
+    if (productHasVariants) {
+      add(product, quantity, variantId);
+    } else {
+      add(product, quantity);
+    }
+  }
+
   return (
     <>
       <section className="section product-detail">
@@ -354,25 +418,14 @@ function ProductDetail({ p }) {
             <span>/</span>
             <Link to="/catalogo">{t("catalog")}</Link>
             <span>/</span>
-            <span>{local(p, "title")}</span>
+            <span>{local(product, "title")}</span>
           </nav>
           <div className="detail-grid">
             <div>
-              <Photo
-                product={
-                  selectedImage
-                    ? {
-                        ...p,
-                        image: selectedImage.url,
-                        images: [{ ...selectedImage, isPrimary: true }],
-                      }
-                    : p
-                }
-                className="detail-photo"
-              />
-              {p.images?.length > 1 && (
+              <Photo product={displayedPhoto} className="detail-photo" />
+              {product.images?.length > 1 && (
                 <div className="product-gallery">
-                  {p.images.map((image, index) => (
+                  {product.images.map((image, index) => (
                     <button
                       key={`${image.url}-${index}`}
                       type="button"
@@ -382,13 +435,13 @@ function ProductDetail({ p }) {
                           : image.isPrimary
                       }
                       aria-label={
-                        image.altIt || `${local(p, "title")} ${index + 1}`
+                        image.altIt || `${local(product, "title")} ${index + 1}`
                       }
                       onClick={() => setSelectedImage(image)}
                     >
                       <img
                         src={image.url}
-                        alt={image.altIt || local(p, "title")}
+                        alt={image.altIt || local(product, "title")}
                       />
                     </button>
                   ))}
@@ -397,37 +450,63 @@ function ProductDetail({ p }) {
             </div>
             <div className="detail-copy">
               <p className="eyebrow">
-                {t("categories")[p.category] || p.category}
+                {t("categories")[product.category] || product.category}
               </p>
-              <h1>{local(p, "title")}</h1>
-              <p className="detail-description">{local(p, "description")}</p>
+              <h1>{local(product, "title")}</h1>
+              <p className="detail-description">{local(product, "description")}</p>
+              {productHasVariants && (
+                <label className="variant-choice">
+                  {t("variant")}
+                  <select value={variantId} onChange={handleVariantChange}>
+                    <option value="">{t("chooseVariant")}</option>
+                    {product.variants.map((variant) => {
+                      const variantAvailable = canPurchase(product, variant);
+                      const description = itemDescription({
+                        variantName: variant.name,
+                        variantNameEn: variant.nameEn,
+                        format: variant.format,
+                        formatEn: variant.formatEn,
+                      }, lang);
+                      let label = `${description} · ${money(variant.price)}`;
+                      if (!variantAvailable) {
+                        label += ` · ${t("soldOut")}`;
+                      }
+
+                      return (
+                        <option key={variant.id} value={variant.id} disabled={!variantAvailable}>
+                          {label}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </label>
+              )}
               <div className="detail-price">
-                {money(p.price)}
+                {showStartingPrice && `${t("fromPrice")} `}
+                {money(price)}
                 <small>{t("perBox")}</small>
               </div>
               <p>
-                <span className={`stock-dot ${p.available ? "" : "off"}`} />
-                {p.available
-                  ? `${t("available")} · ${p.stock} ${t("stock")}`
-                  : t("soldOut")}
+                <span className={`stock-dot ${available ? "" : "off"}`} />
+                {stockText}
               </p>
               <div className="format-box">
                 <PackageCheck size={20} />
                 <span>
                   <small>{t("format")}</small>
-                  {local(p, "format")}
+                  {formatText}
                 </span>
               </div>
               <div className="detail-add">
                 <Quantity
                   value={quantity}
-                  max={p.stock}
+                  max={maxQuantity}
                   onChange={setQuantity}
                 />
                 <button
                   className="button"
-                  disabled={!p.available}
-                  onClick={() => add(p, quantity)}
+                  disabled={!canAddToCart}
+                  onClick={handleAddToCart}
                 >
                   {t("add")}
                   <ShoppingBag size={18} />
@@ -436,7 +515,7 @@ function ProductDetail({ p }) {
                   className={`icon-button favorite-detail ${liked ? "liked" : ""}`}
                   aria-label={liked ? t("favoriteRemove") : t("favoriteAdd")}
                   aria-pressed={liked}
-                  onClick={() => favorite(p.id)}
+                  onClick={() => favorite(product.id)}
                 >
                   <Heart fill={liked ? "currentColor" : "none"} size={22} />
                 </button>
@@ -447,12 +526,12 @@ function ProductDetail({ p }) {
               </p>
               <details open>
                 <summary>{t("ingredients")}</summary>
-                <p>{local(p, "ingredients").join(", ")}.</p>
+                <p>{local(product, "ingredients").join(", ")}.</p>
               </details>
               <details open>
                 <summary>{t("allergens")}</summary>
                 <p>
-                  <strong>{local(p, "allergens").join(", ")}.</strong>
+                  <strong>{local(product, "allergens").join(", ")}.</strong>
                 </p>
                 <p className="small">{t("allergenNotice")}</p>
               </details>
@@ -470,11 +549,11 @@ function ProductDetail({ p }) {
           <h2>{t("related")}</h2>
           <div className="product-grid">
             {products
-              .filter((x) => x.id !== p.id)
+              .filter((relatedProduct) => relatedProduct.id !== product.id)
               .sort(
                 (a, b) =>
-                  Number(b.category === p.category) -
-                  Number(a.category === p.category),
+                  Number(b.category === product.category) -
+                  Number(a.category === product.category),
               )
               .slice(0, 4)
               .map((p) => (
@@ -515,27 +594,39 @@ export function Favorites() {
   );
 }
 export function OrderSummary({ children }) {
-  const { t, lines, local, money, total } = useStore();
+  const { t, lang, lines, local, money, total } = useStore();
   return (
     <aside className="order-summary">
       <p className="eyebrow">TUNISWEET</p>
       <h2>{t("summary")}</h2>
       <div className="summary-products">
-        {lines.map(
-          ({ product: p, id, quantity }) =>
-            p && (
-              <div key={id}>
-                <Photo product={p} />
-                <span>
-                  {local(p, "title")}
-                  <small>
-                    {quantity} × {money(p.price)}
-                  </small>
-                </span>
-                <strong>{money(p.price * quantity)}</strong>
-              </div>
-            ),
-        )}
+        {lines.map((line) => {
+          const product = line.product;
+          if (!product) {
+            return null;
+          }
+
+          let unitPrice = "—";
+          let lineTotal = "—";
+          if (line.option) {
+            unitPrice = money(line.price);
+            lineTotal = money(line.price * line.quantity);
+          }
+
+          return (
+            <div key={line.key}>
+              <Photo product={product} />
+              <span>
+                {local(product, "title")}
+                <small>{itemDescription(line, lang)}</small>
+                <small>
+                  {line.quantity} × {unitPrice}
+                </small>
+              </span>
+              <strong>{lineTotal}</strong>
+            </div>
+          );
+        })}
       </div>
       <div className="summary-row">
         <span>{t("subtotal")}</span>
@@ -554,7 +645,7 @@ export function OrderSummary({ children }) {
   );
 }
 export function Cart() {
-  const { t, lines, local, money, change, remove, invalidCart } = useStore();
+  const { t, lang, lines, local, money, change, remove, invalidCart } = useStore();
   return (
     <>
       <PageHeading eyebrow={t("cart")} title={t("cartTitle")} />
@@ -572,50 +663,74 @@ export function Cart() {
                     </p>
                   )}
                   <div className="cart-lines">
-                    {lines.map(({ id, quantity, product: p }) => (
-                      <article className="cart-line" key={id}>
-                        {p ? (
-                          <>
-                            <Link to={`/dolci/${id}`}>
-                              <Photo product={p} />
-                            </Link>
-                            <div className="cart-line-info">
-                              <Link to={`/dolci/${id}`}>
-                                <h3>{local(p, "title")}</h3>
-                              </Link>
-                              <p>{local(p, "format")}</p>
-                              <span>{money(p.price)}</span>
-                              <button
-                                className="text-button remove-button"
-                                onClick={() => remove(id)}
-                              >
-                                {t("remove")}
-                              </button>
-                              {(!p.available || quantity > p.stock) && (
-                                <span className="inline-error">
-                                  {t("stockChanged")}
-                                </span>
-                              )}
-                            </div>
-                            <div className="cart-line-controls">
-                              <Quantity
-                                value={quantity}
-                                onChange={(n) => change(id, n)}
-                                max={p.stock}
-                              />
-                              <strong>{money(p.price * quantity)}</strong>
-                            </div>
-                          </>
-                        ) : (
-                          <>
+                    {lines.map((line) => {
+                      const product = line.product;
+                      if (!product) {
+                        return (
+                          <article className="cart-line" key={line.key}>
                             <p>{t("soldOut")}</p>
-                            <button onClick={() => remove(id)}>
+                            <button onClick={() => remove(line.id, line.variantId)}>
                               {t("remove")}
                             </button>
-                          </>
-                        )}
-                      </article>
-                    ))}
+                          </article>
+                        );
+                      }
+
+                      const needsVariant = hasVariants(product) && line.variantId === undefined;
+                      let errorMessage = t("stockChanged");
+                      if (needsVariant) {
+                        errorMessage = t("variantRequired");
+                      }
+
+                      let maxQuantity = 0;
+                      if (canPurchase(product, line.option)) {
+                        maxQuantity = line.option.stock;
+                      }
+
+                      let unitPrice = "—";
+                      let lineTotal = "—";
+                      if (line.option) {
+                        unitPrice = money(line.price);
+                        lineTotal = money(line.price * line.quantity);
+                      }
+
+                      return (
+                        <article className="cart-line" key={line.key}>
+                          <Link to={`/dolci/${line.id}`}>
+                            <Photo product={product} />
+                          </Link>
+                          <div className="cart-line-info">
+                            <Link to={`/dolci/${line.id}`}>
+                              <h3>{local(product, "title")}</h3>
+                            </Link>
+                            <p>{itemDescription(line, lang)}</p>
+                            <span>{unitPrice}</span>
+                            <button
+                              className="text-button remove-button"
+                              onClick={() => remove(line.id, line.variantId)}
+                            >
+                              {t("remove")}
+                            </button>
+                            {!line.valid && (
+                              <span className="inline-error">
+                                {errorMessage}
+                                {needsVariant && (
+                                  <> <Link to={`/dolci/${line.id}`}>{t("chooseVariant")}</Link></>
+                                )}
+                              </span>
+                            )}
+                          </div>
+                          <div className="cart-line-controls">
+                            <Quantity
+                              value={line.quantity}
+                              onChange={(quantity) => change(line.id, quantity, line.variantId)}
+                              max={maxQuantity}
+                            />
+                            <strong>{lineTotal}</strong>
+                          </div>
+                        </article>
+                      );
+                    })}
                   </div>
                   <Link className="link-button" to="/catalogo">
                     ← {t("continue")}

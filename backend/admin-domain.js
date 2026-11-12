@@ -51,16 +51,22 @@ export function validateDomain(type, value) {
       variants: z
         .array(
           z.object({
+            id: z.string().uuid().optional(),
             name: text.min(1),
+            nameEn: text.optional(),
             format: text,
-            price: z.number().finite().min(0),
-            stock: z.number().int().min(0),
+            formatEn: text.optional(),
+            price: z.number().finite().min(0).max(100000),
+            stock: z.number().int().min(0).max(100000),
             available: z.boolean(),
           }),
         )
         .max(30)
         .optional(),
     }).parse(value);
+    const ids = (value.variants || []).map((variant) => variant.id).filter((id) => id !== undefined);
+    if (new Set(ids).size !== ids.length)
+      throw new Error("Gli identificativi delle varianti devono essere univoci.");
     if (value.images && value.images.filter((i) => i.isPrimary).length !== 1)
       throw new Error("Seleziona una sola immagine principale.");
   }

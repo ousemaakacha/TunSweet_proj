@@ -1094,6 +1094,12 @@ textarea::placeholder {
   margin: 20px 0;
   font-weight: 500;
 }
+.variant-choice {
+  display: grid;
+  gap: 8px;
+  margin: 20px 0;
+  font-size: 12px;
+}
 .detail-price small {
   font-size: 11px;
   font-weight: 400;

@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useStore } from "./state";
 import { saveLocal } from "./services";
+import { hasVariants, productAvailable, productPrice } from "../shared/products.js";
 export function Logo() {
   const { t, settings } = useStore();
   return (
@@ -253,47 +254,59 @@ export function Photo({ product, className = "" }) {
     />
   );
 }
-export function ProductCard({ product: p }) {
+export function ProductCard({ product }) {
   const { t, local, money, add, favorite, favorites } = useStore();
-  const liked = favorites.includes(p.id);
+  const liked = favorites.includes(product.id);
+  const available = productAvailable(product);
+  const productHasVariants = hasVariants(product);
+  const price = productPrice(product);
   return (
     <article className="product-card">
       <div className="card-image">
-        <Link to={`/dolci/${p.id}`} aria-label={local(p, "title")}>
-          <Photo product={p} />
+        <Link to={`/dolci/${product.id}`} aria-label={local(product, "title")}>
+          <Photo product={product} />
         </Link>
-        {p.featured && (
+        {product.featured && (
           <span className="product-tag">{t("featuredLabel")}</span>
         )}
-        {!p.available && (
+        {!available && (
           <span className="product-tag sold-out">{t("soldOut")}</span>
         )}
         <button
           className={`favorite-button ${liked ? "liked" : ""}`}
           aria-label={liked ? t("favoriteRemove") : t("favoriteAdd")}
           aria-pressed={liked}
-          onClick={() => favorite(p.id)}
+          onClick={() => favorite(product.id)}
         >
           <Heart size={18} fill={liked ? "currentColor" : "none"} />
         </button>
       </div>
       <div className="card-body">
-        <span className="category-label">{t("categories")[p.category]}</span>
-        <Link to={`/dolci/${p.id}`}>
-          <h3>{local(p, "title")}</h3>
+        <span className="category-label">{t("categories")[product.category]}</span>
+        <Link to={`/dolci/${product.id}`}>
+          <h3>{local(product, "title")}</h3>
         </Link>
-        <p className="product-format">{local(p, "format")}</p>
+        <p className="product-format">{local(product, "format")}</p>
         <div className="card-bottom">
-          <strong>{money(p.price)}</strong>
-          <button
-            onClick={() => add(p)}
-            disabled={!p.available}
-            className="add-button"
-            aria-label={`${t("add")} ${local(p, "title")}`}
-          >
-            {t("add")}
-            <Plus size={15} />
-          </button>
+          <strong>
+            {productHasVariants && `${t("fromPrice")} `}
+            {money(price)}
+          </strong>
+          {productHasVariants ? (
+            <Link className="add-button" to={`/dolci/${product.id}`}>
+              {t("chooseVariant")}
+            </Link>
+          ) : (
+            <button
+              onClick={() => add(product)}
+              disabled={!available}
+              className="add-button"
+              aria-label={`${t("add")} ${local(product, "title")}`}
+            >
+              {t("add")}
+              <Plus size={15} />
+            </button>
+          )}
         </div>
       </div>
     </article>

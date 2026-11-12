@@ -71,6 +71,7 @@ export const it = {
   variants: "Varianti",
   addVariant: "Aggiungi variante",
   variantName: "Nome variante",
+  variantNameEn: "Nome variante inglese",
   productRequired:
     "Compila nome, categoria, prezzo e quantità validi e scegli un’immagine principale.",
   images: "Immagini",

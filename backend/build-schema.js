@@ -83,7 +83,7 @@ function generateSchemaFromTypes() {
           }
           
           // Skip readonly properties for validation as they're set by the server
-          if (propName === 'id' || propName === 'createdAt' || propName === 'updatedAt') {
+          if (isExported && (propName === 'id' || propName === 'createdAt' || propName === 'updatedAt')) {
             return;
           }
           

@@ -1,7 +1,12 @@
 type OrderItem = {
   productId: number;
+  variantId?: string;
+  variantName?: string;
+  variantNameEn?: string;
   title: string;
   titleEn: string;
+  format?: string;
+  formatEn?: string;
   quantity: number;
   price: number;
 };
@@ -21,8 +26,11 @@ type ProductImage = {
   sortOrder: number;
 };
 type ProductVariant = {
+  id?: string;
   name: string;
+  nameEn?: string;
   format: string;
+  formatEn?: string;
   price: number;
   stock: number;
   available: boolean;

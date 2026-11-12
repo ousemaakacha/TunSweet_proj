@@ -4,6 +4,7 @@ import { ArrowRight, LogOut, ShieldCheck } from "lucide-react";
 import { useStore } from "./state";
 import { authService } from "./services";
 import { Empty } from "./components";
+import { itemDescription, lineKey } from "../shared/products.js";
 
 const orderStatusKeys = {
   "In attesa": "pending",
@@ -117,9 +118,10 @@ function MyOrders({ onSessionExpired }) {
                 </dl>
                 <ul className="confirmation-items" aria-label={t("orderProducts")}>
                   {order.items.map((item) => (
-                    <li className="summary-row" key={item.productId}>
+                    <li className="summary-row" key={lineKey(item.productId, item.variantId)}>
                       <span>
                         {item.quantity} × {local(item, "title")}
+                        {itemDescription(item, lang) && <small className="muted"> · {itemDescription(item, lang)}</small>}
                       </span>
                       <strong>{money(item.price * item.quantity)}</strong>
                     </li>

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { orderService, money, date, exportOrders } from "./services";
 import { it as t } from "./text";
+import { itemDescription, lineKey } from "../../shared/products.js";
 import {
   useResource,
   ResourceState,
@@ -253,9 +254,10 @@ export function OrderDetail() {
           <section className="admin-panel">
             <h2>{t.products}</h2>
             {o.items.map((i) => (
-              <div className="admin-summary-row" key={i.productId}>
+              <div className="admin-summary-row" key={lineKey(i.productId, i.variantId)}>
                 <span>
                   {i.quantity} × {i.title}
+                  {itemDescription(i) && <small> · {itemDescription(i)}</small>}
                 </span>
                 <strong>{money(i.price * i.quantity)}</strong>
               </div>

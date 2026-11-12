@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { pickupDates, pickupSlots, shop } from "../shared/config.js";
+import { canPurchase, hasVariants, lineKey, purchaseOption } from "../shared/products.js";
 export function createOrder(
   input,
   products,
@@ -74,27 +75,43 @@ export function createOrder(
     if (
       !item ||
       !Number.isSafeInteger(item.productId) ||
+      item.productId < 1 ||
+      (item.variantId !== undefined &&
+        (typeof item.variantId !== "string" || !item.variantId.length || item.variantId.length > 100)) ||
       !Number.isSafeInteger(item.quantity) ||
       item.quantity < 1
     )
       fail("invalidOrder");
-    quantities.set(
-      item.productId,
-      (quantities.get(item.productId) || 0) + item.quantity,
-    );
+    const key = lineKey(item.productId, item.variantId);
+    const quantity = (quantities.get(key)?.quantity || 0) + item.quantity;
+    if (!Number.isSafeInteger(quantity)) fail("invalidOrder");
+    quantities.set(key, { productId: item.productId, variantId: item.variantId, quantity });
   }
-  const items = [...quantities].map(([id, quantity]) => {
-    const p = products.find((p) => p.id === id);
-    if (!p || p.published === false || !p.available || quantity > p.stock)
-      fail("stockChanged");
+  const items = [...quantities.values()].map(({ productId, variantId, quantity }) => {
+    const p = products.find((p) => p.id === productId);
+    if (hasVariants(p) && variantId === undefined) fail("variantRequired");
+    const option = purchaseOption(p, variantId);
+    if (!canPurchase(p, option, quantity)) fail("stockChanged");
+    if (!Number.isFinite(option.price) || option.price < 0) fail("stockChanged");
+    const cents = Math.round(option.price * 100);
+    if (!Number.isSafeInteger(cents) || cents < 0) fail("stockChanged");
     return {
-      productId: id,
+      productId,
+      ...(variantId !== undefined && {
+        variantId,
+        variantName: option.name,
+        variantNameEn: option.nameEn || option.name,
+      }),
       title: p.title,
       titleEn: p.titleEn,
+      format: option.format,
+      formatEn: option.formatEn || option.format,
       quantity,
-      price: p.price,
+      price: cents / 100,
     };
   });
+  const totalCents = items.reduce((sum, item) => sum + Math.round(item.price * 100) * item.quantity, 0);
+  if (!Number.isSafeInteger(totalCents)) fail("invalidOrder");
   const reference = `TS-${now.getUTCFullYear()}-${randomUUID().slice(0, 8).toUpperCase()}`;
   return {
     existing: false,
@@ -104,11 +121,7 @@ export function createOrder(
       category: "pickup",
       reference,
       items,
-      total:
-        items.reduce(
-          (sum, i) => sum + Math.round(i.price * 100) * i.quantity,
-          0,
-        ) / 100,
+      total: totalCents / 100,
       customer: {
         name: c.name.trim(),
         email: c.email.trim(),

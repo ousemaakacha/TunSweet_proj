@@ -285,6 +285,20 @@ export function ProductForm() {
     }
   }, [r.data]);
   const set = (key, value) => setForm((old) => ({ ...old, [key]: value }));
+
+  function updateVariant(variantIndex, field, value) {
+    setForm((currentForm) => {
+      const variants = currentForm.variants.map((variant, index) => {
+        if (index !== variantIndex) {
+          return variant;
+        }
+        return { ...variant, [field]: value };
+      });
+
+      return { ...currentForm, variants };
+    });
+  }
+
   const submit = async (e) => {
     e.preventDefault();
     if (uploadBusy) return;
@@ -417,47 +431,44 @@ export function ProductForm() {
                 ),
               )}
               <h2>{t.variants}</h2>
-              {form.variants.map((v, i) => (
-                <div className="admin-variant" key={i}>
-                  {["name", "format", "price", "stock"].map((key) => (
-                    <Field
-                      key={key}
-                      label={t[key]}
-                      type={
-                        ["price", "stock"].includes(key) ? "number" : "text"
-                      }
-                      min="0"
-                      step={key === "price" ? ".01" : "1"}
-                      required
-                      value={v[key]}
-                      onChange={(e) =>
-                        set(
-                          "variants",
-                          form.variants.map((x, n) =>
-                            n === i
-                              ? {
-                                  ...x,
-                                  [key]: ["price", "stock"].includes(key)
-                                    ? Number(e.target.value)
-                                    : e.target.value,
-                                }
-                              : x,
-                          ),
-                        )
-                      }
-                    />
-                  ))}
+              {form.variants.map((variant, index) => (
+                <div className="admin-variant" key={variant.id || index}>
+                  {["name", "nameEn", "format", "formatEn", "price", "stock"].map((field) => {
+                    let label = t[field];
+                    if (field === "name") {
+                      label = t.variantName;
+                    } else if (field === "nameEn") {
+                      label = t.variantNameEn;
+                    }
+
+                    const isNumber = field === "price" || field === "stock";
+                    const isRequired = field !== "nameEn" && field !== "formatEn";
+
+                    return (
+                      <Field
+                        key={field}
+                        label={label}
+                        type={isNumber ? "number" : "text"}
+                        min="0"
+                        step={field === "price" ? ".01" : "1"}
+                        required={isRequired}
+                        value={variant[field] ?? ""}
+                        onChange={(event) => {
+                          let value = event.target.value;
+                          if (isNumber) {
+                            value = Number(value);
+                          }
+                          updateVariant(index, field, value);
+                        }}
+                      />
+                    );
+                  })}
                   <label className="admin-check">
                     <input
                       type="checkbox"
-                      checked={v.available}
-                      onChange={(e) =>
-                        set(
-                          "variants",
-                          form.variants.map((x, n) =>
-                            n === i ? { ...x, available: e.target.checked } : x,
-                          ),
-                        )
+                      checked={variant.available}
+                      onChange={(event) =>
+                        updateVariant(index, "available", event.target.checked)
                       }
                     />
                     {t.available}
@@ -467,7 +478,7 @@ export function ProductForm() {
                     onClick={() =>
                       set(
                         "variants",
-                        form.variants.filter((_, n) => n !== i),
+                        form.variants.filter((_, currentIndex) => currentIndex !== index),
                       )
                     }
                   >

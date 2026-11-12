@@ -13,10 +13,13 @@ import { useStore } from "./state";
 import { api } from "./services";
 import { PageHeading, ProductsState, Empty } from "./components";
 import { OrderSummary } from "./pages";
+import { itemDescription, lineKey } from "../shared/products.js";
+import { cartLines, cartTotal } from "./cart.js";
 export function Checkout() {
   const {
     t,
     lang,
+    money,
     cart,
     lines,
     total,
@@ -33,16 +36,16 @@ export function Checkout() {
     phone: "",
     notes: "",
   });
-  const [slots, setSlots] = useState([]),
-    [slotsLoading, setSlotsLoading] = useState(true),
-    [slotsError, setSlotsError] = useState(false);
-  const [date, setDate] = useState(""),
-    [slot, setSlot] = useState(""),
-    [busy, setBusy] = useState(""),
-    [accepted, setAccepted] = useState(false),
-    [error, setError] = useState("");
-  const lock = useRef(false),
-    attempt = useRef({ signature: "", key: "" });
+  const [slots, setSlots] = useState([]);
+  const [slotsLoading, setSlotsLoading] = useState(true);
+  const [slotsError, setSlotsError] = useState(false);
+  const [date, setDate] = useState("");
+  const [slot, setSlot] = useState("");
+  const [busy, setBusy] = useState("");
+  const [accepted, setAccepted] = useState(false);
+  const [error, setError] = useState("");
+  const isSubmitting = useRef(false);
+  const orderAttempt = useRef({ signature: "", key: "", sent: false });
   const loadSlots = async () => {
     setSlotsLoading(true);
     setSlotsError(false);
@@ -57,69 +60,99 @@ export function Checkout() {
   useEffect(() => {
     loadSlots();
   }, []);
-  const availableSlots = slots.find((s) => s.date === date)?.slots || [];
-  const submit = async (event) => {
+  const selectedDay = slots.find((day) => day.date === date);
+  const availableSlots = selectedDay?.slots || [];
+  const hasCheckoutErrors = invalidCart || slotsLoading || slotsError;
+  const submitDisabled = Boolean(busy) || (!orderAttempt.current.sent && hasCheckoutErrors);
+
+  async function handleSubmit(event) {
     event.preventDefault();
-    if (lock.current) return;
-    if (!cart.length || invalidCart) {
+    if (isSubmitting.current) {
+      return;
+    }
+
+    const orderItems = cart.map((item) => {
+      const orderItem = { productId: item.id, quantity: item.quantity };
+      if (item.variantId !== undefined) {
+        orderItem.variantId = item.variantId;
+      }
+      return orderItem;
+    });
+    const orderData = {
+      customer,
+      items: orderItems,
+      pickupDate: date,
+      pickupSlot: slot,
+      paymentMethod: "pay_on_pickup",
+    };
+    const signature = JSON.stringify(orderData);
+    const isSameRequest = orderAttempt.current.signature === signature;
+    const isRetry = isSameRequest && orderAttempt.current.sent;
+
+    if (cart.length === 0 || (invalidCart && !isRetry)) {
       setError("stockChanged");
       return;
     }
-    if (!availableSlots.some((s) => s.time === slot && s.remaining > 0)) {
+    const validPickup = availableSlots.some((pickup) => pickup.time === slot && pickup.remaining > 0);
+    if (!isRetry && !validPickup) {
       setError("invalidPickup");
       return;
     }
-    lock.current = true;
+    isSubmitting.current = true;
     setBusy("saving");
     setError("");
     try {
-      const fresh = await refresh({ silent: true });
-      if (!fresh) throw new Error("apiError");
-      if (
-        cart.some((i) => {
-          const p = fresh.find((p) => p.id === i.id);
-          return !p || !p.available || p.stock < i.quantity;
-        })
-      )
-        throw new Error("stockChanged");
-      const freshTotal =
-        cart.reduce(
-          (sum, i) =>
-            sum +
-            Math.round(fresh.find((p) => p.id === i.id).price * 100) *
-              i.quantity,
-          0,
-        ) / 100;
-      if (freshTotal !== total) throw new Error("priceChanged");
-      const body = {
-        customer,
-        items: cart.map((i) => ({ productId: i.id, quantity: i.quantity })),
-        pickupDate: date,
-        pickupSlot: slot,
-        paymentMethod: "pay_on_pickup",
-      };
-      const signature = JSON.stringify(body);
-      if (attempt.current.signature !== signature)
-        attempt.current = { signature, key: crypto.randomUUID() };
+      if (!isRetry) {
+        const freshProducts = await refresh({ silent: true });
+        if (!freshProducts) {
+          throw new Error("apiError");
+        }
+
+        const freshLines = cartLines(cart, freshProducts);
+        const hasUnavailableItems = freshLines.some((line) => !line.valid);
+        if (hasUnavailableItems) {
+          throw new Error("stockChanged");
+        }
+
+        const totalChanged = cartTotal(freshLines) !== total;
+        const itemPriceChanged = freshLines.some((line, index) => {
+          const previousLine = lines[index];
+          return line.price !== previousLine.price;
+        });
+        if (totalChanged || itemPriceChanged) {
+          throw new Error("priceChanged");
+        }
+      }
+
+      if (!isSameRequest) {
+        orderAttempt.current = { signature, key: crypto.randomUUID(), sent: false };
+      }
+      // A lost response must retry the same key even if this purchase exhausted stock.
+      orderAttempt.current.sent = true;
       const order = await api.order({
-        ...body,
-        idempotencyKey: attempt.current.key,
+        ...orderData,
+        idempotencyKey: orderAttempt.current.key,
       });
       setCart([]);
       await refresh({ silent: true });
       navigate("/conferma", { state: { order }, replace: true });
-    } catch (err) {
-      setError(err.message);
-      if (err.status === 401) setSession(null);
-      if (["slotFull", "invalidPickup"].includes(err.message)) {
+    } catch (requestError) {
+      setError(requestError.message);
+      if (requestError.status && requestError.status < 500) {
+        orderAttempt.current.sent = false;
+      }
+      if (requestError.status === 401) {
+        setSession(null);
+      }
+      if (["slotFull", "invalidPickup"].includes(requestError.message)) {
         setSlot("");
         await loadSlots();
       }
     } finally {
       setBusy("");
-      lock.current = false;
+      isSubmitting.current = false;
     }
-  };
+  }
   return (
     <>
       <PageHeading
@@ -134,7 +167,7 @@ export function Checkout() {
               <Empty title={t("cartEmpty")} text={t("cartEmptyText")} />
             ) : (
               <div className="checkout-layout">
-                <form onSubmit={submit} className="checkout-form">
+                <form onSubmit={handleSubmit} className="checkout-form">
                   <fieldset disabled={!!busy}>
                     <legend>
                       <span>01</span>
@@ -324,9 +357,7 @@ export function Checkout() {
                     <button
                       className="button order-button"
                       type="submit"
-                      disabled={
-                        !!busy || invalidCart || slotsLoading || slotsError
-                      }
+                      disabled={submitDisabled}
                     >
                       {busy ? (
                         <>
@@ -336,10 +367,7 @@ export function Checkout() {
                       ) : (
                         <>
                           {t("orderButton")} ·{" "}
-                          {new Intl.NumberFormat(
-                            lang === "it" ? "it-IT" : "en-IE",
-                            { style: "currency", currency: "EUR" },
-                          ).format(total)}
+                          {money(total)}
                           <ArrowRight size={17} />
                         </>
                       )}
@@ -361,7 +389,7 @@ export function Checkout() {
   );
 }
 export function Confirmation() {
-  const { t, lang, money } = useStore();
+  const { t, lang, local, money } = useStore();
   const order = useLocation().state?.order;
   if (!order) return <Empty title={t("noOrder")} text={t("noOrderText")} />;
   return (
@@ -383,14 +411,18 @@ export function Confirmation() {
             <span className="status-pill">{t("pending")}</span>
           </div>
           <div className="confirmation-items">
-            {order.items.map((i) => (
-              <div className="summary-row" key={i.productId}>
-                <span>
-                  {i.quantity} × {lang === "en" ? i.titleEn : i.title}
-                </span>
-                <strong>{money(i.price * i.quantity)}</strong>
-              </div>
-            ))}
+            {order.items.map((item) => {
+              const description = itemDescription(item, lang);
+              return (
+                <div className="summary-row" key={lineKey(item.productId, item.variantId)}>
+                  <span>
+                    {item.quantity} × {local(item, "title")}
+                    {description && <small className="muted"> · {description}</small>}
+                  </span>
+                  <strong>{money(item.price * item.quantity)}</strong>
+                </div>
+              );
+            })}
           </div>
           <div className="summary-row total">
             <span>{t("total")}</span>
