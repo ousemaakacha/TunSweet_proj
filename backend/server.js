@@ -10,6 +10,7 @@ import morgan from "morgan";
 import { validators } from "./schema.js";
 import { createOrder } from "./order-domain.js";
 import { purchaseOption } from "../shared/products.js";
+import { isPastryAtlas } from "../shared/images.js";
 import { calendarDays, defaultSettings } from "../shared/calendar.js";
 import { validateDomain, orderStatuses } from "./admin-domain.js";
 import { customerAuth } from "./customer-auth.js";
@@ -108,7 +109,7 @@ const normalizeProduct = (p) => {
   return {
     ...p,
     image,
-    imagePosition: image.includes("pastries-atlas.png")
+    imagePosition: isPastryAtlas(image)
       ? p.imagePosition
       : "center",
   };

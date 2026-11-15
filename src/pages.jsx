@@ -75,8 +75,12 @@ export function Home() {
           <div className="hero-visual">
             <img
               className="hero-image"
-              src="/images/hero.png"
+              src="/images/hero.webp"
               alt={t("pastryPhotoAlt")}
+              width="1536"
+              height="1024"
+              loading="eager"
+              fetchPriority="high"
             />
             <div className="handmade-seal">
               <Flower2 size={22} strokeWidth={1} />
@@ -146,9 +150,12 @@ export function Home() {
         <div className="container story-grid">
           <div className="story-photo">
             <img
-              src="/images/hero.png"
+              src="/images/hero.webp"
               alt={t("pastryPhotoAlt")}
+              width="1536"
+              height="1024"
               loading="lazy"
+              decoding="async"
             />
           </div>
           <div className="story-copy">
@@ -310,8 +317,8 @@ export function Catalog() {
             </div>
             {filtered.length ? (
               <div className="product-grid">
-                {filtered.map((p) => (
-                  <ProductCard key={p.id} product={p} />
+                {filtered.map((p, index) => (
+                  <ProductCard key={p.id} product={p} priority={index === 0} />
                 ))}
               </div>
             ) : (
@@ -422,7 +429,7 @@ function ProductDetail({ product }) {
           </nav>
           <div className="detail-grid">
             <div>
-              <Photo product={displayedPhoto} className="detail-photo" />
+              <Photo product={displayedPhoto} className="detail-photo" priority />
               {product.images?.length > 1 && (
                 <div className="product-gallery">
                   {product.images.map((image, index) => (
@@ -439,9 +446,12 @@ function ProductDetail({ product }) {
                       }
                       onClick={() => setSelectedImage(image)}
                     >
-                      <img
-                        src={image.url}
-                        alt={image.altIt || local(product, "title")}
+                      <Photo
+                        product={{
+                          ...product,
+                          image: image.url,
+                          images: [{ ...image, isPrimary: true }],
+                        }}
                       />
                     </button>
                   ))}
@@ -772,7 +782,13 @@ export function About() {
       />
       <section className="section">
         <div className="container about-grid">
-          <img src="/images/hero.png" alt={t("pastryPhotoAlt")} />
+          <img
+            src="/images/hero.webp"
+            alt={t("pastryPhotoAlt")}
+            width="1536"
+            height="1024"
+            loading="eager"
+          />
           <div>
             <p className="eyebrow">TUNISWEET</p>
             <h2>{t("aboutValue1")}</h2>

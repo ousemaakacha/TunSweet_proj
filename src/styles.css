@@ -595,8 +595,6 @@ textarea:focus-visible {
   background: #eee9dd;
 }
 .product-photo {
-  background-size: 400% 300%;
-  background-repeat: no-repeat;
   aspect-ratio: 1;
   background-color: #ebe5d9;
   width: 100%;
@@ -1586,6 +1584,7 @@ textarea::placeholder {
   align-items: center;
 }
 .about-grid > img {
+  height: auto;
   border-radius: 10px 90px 10px 10px;
   min-height: 450px;
   object-fit: cover;
@@ -2789,7 +2788,6 @@ textarea::placeholder {
   object-fit: contain;
 }
 .individual-photo {
-  background-size: cover;
   position: relative;
   overflow: hidden;
 }
@@ -2799,6 +2797,11 @@ textarea::placeholder {
   position: absolute;
   inset: 0;
   object-fit: cover;
+}
+.atlas-photo img {
+  object-fit: fill;
+  /* La griglia 4×3 mantiene gli stessi ritagli del precedente sfondo CSS. */
+  transform: scale(4, 3);
 }
 .individual-photo > span {
   display: grid;
@@ -2824,9 +2827,8 @@ textarea::placeholder {
   border-color: var(--green);
   box-shadow: 0 0 0 1px var(--green);
 }
-.product-gallery img {
+.product-gallery .product-photo {
   height: 100%;
   width: 100%;
-  object-fit: cover;
   border-radius: 4px;
 }

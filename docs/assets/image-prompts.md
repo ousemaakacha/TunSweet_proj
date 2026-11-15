@@ -2,6 +2,8 @@
 
 Immagini generate con OpenAI Imagegen per il progetto, senza fotografie di riferimento. Non documentano prodotti effettivamente preparati dal negozio. I file usati dal sito sono in public/images/; i prompt sono conservati qui per tracciarne la provenienza. Le foto dei prodotti in vendita si sostituiscono dal pannello amministrativo.
 
+Gli originali PNG sono conservati. Il sito usa le copie WebP generate con `npm run optimize:images`; misure e verifiche sono in [image-optimization.md](./image-optimization.md).
+
 ## hero.png
 
 Use case: product-mockup. High-end photorealistic editorial food photograph for TUNISWEET, artisanal Tunisian pastry shop. Landscape. Warm ivory ceramic platter of authentic golden date makroudh, layered pistachio baklava, white kaak warka rings and almond pastries. Pale cream linen table, olive green bowl of pistachios, scattered nuts, brass teaspoon, muted terracotta fabric. Angled overhead close-up, natural soft daylight, rich appetizing texture, cream, pistachio and honey palette. No text, logos or watermarks.

@@ -255,6 +255,39 @@ test("URL product CRUD, drafts, primary image order and legacy products", async 
     400,
   );
 });
+test("panel images preserve local PNG/WebP atlas crops and external image URLs", async () => {
+  const { id, createdAt, updatedAt, ...copy } = (await api("/admin/products")).data[0];
+  const position = "66.66666666666667% 100%";
+  for (const url of [
+    "/images/pastries-atlas.png",
+    "/images/pastries-atlas.webp",
+    "https://example.com/pastries-atlas.png",
+  ]) {
+    const created = await api("/admin/products", {
+      method: "POST",
+      body: {
+        ...copy,
+        title: "QA atlas",
+        published: true,
+        image: url,
+        imagePosition: position,
+        images: [{
+          url, source: "external", altIt: "Foto italiana", altEn: "English photo",
+          isPrimary: true, sortOrder: 0,
+        }],
+      },
+    });
+    assert.equal(created.status, 201);
+    const visible = await api(`/products/${created.data.id}`, { auth: false });
+    assert.equal(visible.status, 200);
+    assert.equal(visible.data.product.image, url);
+    assert.equal(visible.data.product.images[0].altIt, "Foto italiana");
+    assert.equal(visible.data.product.images[0].altEn, "English photo");
+    assert.equal(visible.data.product.imagePosition, url.startsWith("/images/") ? position : "center");
+    assert.equal((await api(`/admin/products/${created.data.id}`, { method: "DELETE" })).status, 200);
+  }
+});
+
 test("calendar custom slots drive public availability and reject overselling", async () => {
   const adminDays = (await api("/admin/calendar")).data;
   assert.equal(

@@ -13,6 +13,7 @@ import {
   Empty,
 } from "./ui";
 import { ImageManager, ImagePreview } from "./images";
+import { isPastryAtlas } from "../../shared/images.js";
 export function Products() {
   const r = useResource(productService.list),
     { run, busy } = useAction(),
@@ -322,9 +323,7 @@ export function ProductForm() {
         {
           ...form,
           image: form.images.find((i) => i.isPrimary).url,
-          imagePosition: form.images
-            .find((i) => i.isPrimary)
-            .url.includes("pastries-atlas.png")
+          imagePosition: isPastryAtlas(form.images.find((i) => i.isPrimary).url)
             ? form.imagePosition
             : "center",
           ...Object.fromEntries(

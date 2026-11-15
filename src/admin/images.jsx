@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { imageStorageService, isHttps } from "./services";
 import { it as t } from "./text";
 import { Field, useAdminUI } from "./ui";
+import { optimizedImageUrl } from "../../shared/images.js";
 export const normalizeImages = (images) =>
   images.map((i, n) => ({
     ...i,
@@ -14,7 +15,13 @@ export function ImagePreview({ url, alt = "" }) {
   return failed ? (
     <div className="admin-image-fallback">{t.imageFallback}</div>
   ) : (
-    <img src={url} alt={alt} onError={() => setFailed(true)} />
+    <img
+      src={optimizedImageUrl(url)}
+      alt={alt}
+      loading="lazy"
+      decoding="async"
+      onError={() => setFailed(true)}
+    />
   );
 }
 export function ImageManager({

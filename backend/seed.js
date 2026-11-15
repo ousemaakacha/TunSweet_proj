@@ -247,7 +247,7 @@ const products = rows.map((r, i) => {
     format,
     formatEn,
     featured,
-    image: "/images/pastries-atlas.png",
+    image: "/images/pastries-atlas.webp",
     imagePosition: `${((i % 4) * 100) / 3}% ${Math.floor(i / 4) * 50}%`,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),

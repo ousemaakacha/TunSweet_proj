@@ -17,12 +17,21 @@ import {
 import { useStore } from "./state";
 import { saveLocal } from "./services";
 import { hasVariants, productAvailable, productPrice } from "../shared/products.js";
-export function Logo() {
+import { isPastryAtlas, optimizedImageUrl } from "../shared/images.js";
+export function Logo({ loading = "eager" }) {
   const { t, settings } = useStore();
   return (
     <Link to="/" className="brand" aria-label="TUNISWEET">
       {settings?.logo ? (
-        <img className="store-logo" src={settings.logo} alt={settings.name} />
+        <img
+          className="store-logo"
+          src={optimizedImageUrl(settings.logo)}
+          alt={settings.name}
+          width="42"
+          height="42"
+          loading={loading}
+          decoding="async"
+        />
       ) : (
         <span className="brand-mark">
           <Sparkles size={21} strokeWidth={1.3} />
@@ -152,7 +161,7 @@ export function Footer() {
     <footer className="footer">
       <div className="container footer-grid">
         <div className="footer-brand">
-          <Logo />
+          <Logo loading="lazy" />
           <p>{t("footerText")}</p>
           <span className="tiny-badge">
             <Leaf size={13} />
@@ -216,45 +225,46 @@ export function Footer() {
     </footer>
   );
 }
-export function Photo({ product, className = "" }) {
+export function Photo({ product, className = "", priority = false }) {
   const { local, lang, t } = useStore();
   const [failed, setFailed] = useState(false);
   const primary =
     product.images?.find((i) => i.isPrimary) || product.images?.[0];
   const url = primary?.url || product.image;
+  const atlas = isPastryAtlas(url);
   useEffect(() => setFailed(false), [url]);
-  if (!url?.includes("pastries-atlas.png"))
-    return (
-      <div className={`product-photo individual-photo ${className}`}>
-        {failed ? (
-          <span role="img" aria-label={local(product, "title")}>
-            {t("photoUnavailable")}
-          </span>
-        ) : (
-          <img
-            src={url}
-            alt={
-              (lang === "en" ? primary?.altEn : primary?.altIt) ||
-              local(product, "title")
-            }
-            onError={() => setFailed(true)}
-          />
-        )}
-      </div>
-    );
   return (
     <div
-      className={`product-photo ${className}`}
-      role="img"
-      aria-label={local(product, "title")}
-      style={{
-        backgroundImage: `url("${product.image}")`,
-        backgroundPosition: product.imagePosition,
-      }}
-    />
+      className={`product-photo individual-photo ${atlas ? "atlas-photo" : ""} ${className}`}
+    >
+      {failed ? (
+        <span role="img" aria-label={local(product, "title")}>
+          {t("photoUnavailable")}
+        </span>
+      ) : (
+        <img
+          src={optimizedImageUrl(url)}
+          alt={
+            (lang === "en" ? primary?.altEn : primary?.altIt) ||
+            local(product, "title")
+          }
+          width={atlas ? 1448 : primary?.width}
+          height={atlas ? 1086 : primary?.height}
+          loading={priority ? "eager" : "lazy"}
+          fetchPriority={priority ? "high" : "auto"}
+          decoding="async"
+          style={
+            atlas
+              ? { transformOrigin: product.imagePosition || "0% 0%" }
+              : undefined
+          }
+          onError={() => setFailed(true)}
+        />
+      )}
+    </div>
   );
 }
-export function ProductCard({ product }) {
+export function ProductCard({ product, priority = false }) {
   const { t, local, money, add, favorite, favorites } = useStore();
   const liked = favorites.includes(product.id);
   const available = productAvailable(product);
@@ -264,7 +274,7 @@ export function ProductCard({ product }) {
     <article className="product-card">
       <div className="card-image">
         <Link to={`/dolci/${product.id}`} aria-label={local(product, "title")}>
-          <Photo product={product} />
+          <Photo product={product} priority={priority} />
         </Link>
         {product.featured && (
           <span className="product-tag">{t("featuredLabel")}</span>
