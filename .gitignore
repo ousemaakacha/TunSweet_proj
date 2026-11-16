@@ -9,6 +9,10 @@ backend/database/availability.json
 backend/database/storesetting.json
 backend/database/managed-images.json
 backend/database/*.tmp
+*.sqlite
+*.sqlite-journal
+*.sqlite.import-*
+*.sqlite.migration.lock
 artifacts/qa/*.log
 backend/schema.js
 backend/database/order.json

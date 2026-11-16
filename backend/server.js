@@ -14,6 +14,7 @@ import { isPastryAtlas } from "../shared/images.js";
 import { calendarDays, defaultSettings } from "../shared/calendar.js";
 import { validateDomain, orderStatuses } from "./admin-domain.js";
 import { customerAuth } from "./customer-auth.js";
+import { openStorage, transactionalTypes } from "./storage.js";
 import {
   uploadMiddleware,
   cloudinaryStorageAdapter,
@@ -47,7 +48,9 @@ app.use((req, res, next) => {
 });
 const cache = {};
 await fs.mkdir(directory, { recursive: true });
+const store = openStorage(directory);
 for (const type of Object.keys(validators)) {
+  if (transactionalTypes.includes(type)) continue;
   try {
     cache[type] = JSON.parse(
       await fs.readFile(path.join(directory, `${type}.json`), "utf8"),
@@ -62,27 +65,46 @@ for (const type of Object.keys(validators)) {
     cache[type] = [];
   }
 }
-const save = async (type) => {
+const save = (type) => {
+  if (transactionalTypes.includes(type)) return store.replace(type, cache[type]);
+  return saveJson(type);
+};
+const saveJson = async (type) => {
   const file = path.join(directory, `${type}.json`);
   await fs.writeFile(`${file}.tmp`, JSON.stringify(cache[type], null, 2));
   await fs.rename(`${file}.tmp`, file);
 };
-let migratedVariants = false;
-for (const product of cache.product)
-  for (const variant of product.variants || [])
-    if (variant.id === undefined) {
-      variant.id = randomUUID();
-      migratedVariants = true;
-    }
-if (migratedVariants) await save("product");
+store.transaction(() => {
+  Object.assign(cache, store.snapshot());
+  let migratedVariants = false;
+  for (const product of cache.product)
+    for (const variant of product.variants || [])
+      if (variant.id === undefined) {
+        variant.id = randomUUID();
+        migratedVariants = true;
+      }
+  if (migratedVariants) save("product");
+});
+app.use((req, res, next) => {
+  try {
+    Object.assign(cache, store.snapshot());
+    next();
+  } catch (error) { next(error); }
+});
 let queue = Promise.resolve();
-const mutate = (handler) => (req, res, next) => {
+const mutate = (handler, transactional = false) => (req, res, next) => {
   queue = queue
     .catch(() => {})
     .then(async () => {
       const before = structuredClone(cache);
       try {
-        await handler(req, res);
+        const useTransaction = transactional ||
+          transactionalTypes.includes(resources[req.params.resource]);
+        const reply = useTransaction ? store.transaction(() => {
+          Object.assign(cache, store.snapshot());
+          return handler(req, res);
+        }) : await handler(req, res);
+        if (reply) res.status(reply.status || 200).json(reply.body);
       } catch (e) {
         Object.assign(cache, before);
         next(e);
@@ -185,7 +207,7 @@ app.get("/reviews/:id", (req, res) => {
 });
 app.post(
   "/orders",
-  mutate(async (req, res) => {
+  mutate((req, res) => {
     const user = accounts.resolveUser(req, res);
     const result = createOrder(
       req.body,
@@ -196,8 +218,7 @@ app.post(
       user?.id ?? null,
     );
     if (result.existing)
-      return res.json({ success: true, order: result.order });
-    const previousProducts = structuredClone(cache.product);
+      return { body: { success: true, order: result.order } };
     for (const i of result.order.items) {
       const p = cache.product.find((p) => p.id === i.productId);
       const option = purchaseOption(p, i.variantId);
@@ -205,18 +226,11 @@ app.post(
       option.available = option.stock > 0;
       p.updatedAt = new Date().toISOString();
     }
+    save("product");
     cache.order.push(result.order);
-    try {
-      await save("product");
-      await save("order");
-    } catch (e) {
-      cache.product = previousProducts;
-      cache.order.pop();
-      await save("product");
-      throw e;
-    }
-    res.status(201).json({ success: true, order: result.order });
-  }),
+    save("order");
+    return { status: 201, body: { success: true, order: result.order } };
+  }, true),
 );
 app.get("/account/orders", (req, res) => {
   const user = accounts.resolveUser(req, res, true);
@@ -327,7 +341,7 @@ app.get("/admin/:resource/:id", (req, res) => {
 for (const method of ["post", "put", "delete"])
   app[method](
     "/admin/:resource/:id?",
-    mutate(async (req, res) => {
+    mutate((req, res) => {
       const type = resources[req.params.resource];
       if (!type) return fail(404, "Risorsa non trovata.");
       let id = Number(req.params.id),
@@ -339,8 +353,9 @@ for (const method of ["post", "put", "delete"])
         if (!["product", "review"].includes(type))
           return fail(403, "Eliminazione non consentita.");
         cache[type] = cache[type].filter((v) => v.id !== id);
-        await save(type);
-        return res.json({ success: true });
+        const reply = { body: { success: true } };
+        const saved = save(type);
+        return saved ? saved.then(() => reply) : reply;
       }
       let data = { ...old, ...req.body };
       if (type === "order") {
@@ -452,8 +467,9 @@ for (const method of ["post", "put", "delete"])
       cache[type] = old
         ? cache[type].map((v) => (v.id === old.id ? data : v))
         : [...cache[type], data];
-      await save(type);
-      res.status(old ? 200 : 201).json(data);
+      const reply = { status: old ? 200 : 201, body: data };
+      const saved = save(type);
+      return saved ? saved.then(() => reply) : reply;
     }),
   );
 app.use("/uploads", authorize);

@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import { createOrder } from "../backend/order-domain.js";
 import { adminCredentials } from "../backend/admin-auth.js";
 import { calendarDays } from "../shared/calendar.js";
+import { importFixture, readArchive } from "./helpers/storage.js";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const password = "CustomerTestPassword2026!";
@@ -62,7 +63,7 @@ async function stop() {
   server.kill();
   await exited;
 }
-const archive = () => fs.readFile(path.join(directory, "order.json"), "utf8").then(JSON.parse);
+const archive = () => readArchive(directory, "order");
 
 before(async () => {
   directory = await fs.mkdtemp(path.join(os.tmpdir(), "tunisweet-customer-orders-"));
@@ -86,6 +87,7 @@ before(async () => {
     slots: [{ start: "16:00", end: "17:00", capacity: 100 }], notes: "PRIVATE calendar note",
   }]));
   await fs.writeFile(path.join(directory, "admin-account.json"), JSON.stringify(await adminCredentials(admin.email, admin.password)));
+  importFixture(directory);
   await start();
   const login = async (email) => {
     const response = await api("/auth/login", { body: { email, password } });

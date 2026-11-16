@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import { calendarDays, defaultSettings } from "../shared/calendar.js";
 import { createOrder } from "../backend/order-domain.js";
 import { adminCredentials } from "../backend/admin-auth.js";
+import { importFixture } from "./helpers/storage.js";
 const root = fileURLToPath(new URL("../", import.meta.url));
 let dir,
   server,
@@ -55,6 +56,8 @@ before(async () => {
     await fs.readFile(path.join(root, "backend/database/product.json"), "utf8"),
   );
   await fs.writeFile(path.join(dir, "product.json"), JSON.stringify(products));
+  await fs.writeFile(path.join(dir, "order.json"), "[]");
+  importFixture(dir);
   await fs.writeFile(
     path.join(dir, "managed-images.json"),
     JSON.stringify({

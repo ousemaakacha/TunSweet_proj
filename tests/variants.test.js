@@ -10,6 +10,9 @@ import { fileURLToPath } from "node:url";
 import { adminCredentials } from "../backend/admin-auth.js";
 import { createOrder } from "../backend/order-domain.js";
 import { calendarDays } from "../shared/calendar.js";
+import { DatabaseSync } from "node:sqlite";
+import { databaseName } from "../backend/storage.js";
+import { importFixture, readArchive } from "./helpers/storage.js";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const day = calendarDays()[0].date;
@@ -46,7 +49,7 @@ async function api(route, { body, cookie, method = body ? "POST" : "GET" } = {})
   });
   return { status: response.status, data: await response.json(), headers: response.headers };
 }
-const archive = (type) => fs.readFile(path.join(directory, `${type}.json`), "utf8").then(JSON.parse);
+const archive = (type) => readArchive(directory, type);
 const admin = (route, options = {}) => api(route, { ...options, cookie: adminCookie });
 const item = (variant, quantity = 1) => ({ productId: 1, variantId: catalog.variants.find((v) => v.name === variant).id, quantity });
 
@@ -88,6 +91,7 @@ before(async () => {
     users: [{ id: "variant-buyer", name: "Cliente Test", email: "variants@test.example", verifiedAt: Date.now(), createdAt: Date.now(),
       password: { salt: "variant-test", hash: scryptSync(password, "variant-test", 64).toString("hex") } }], sessions: [],
   }));
+  importFixture(directory);
   await start();
   const administrator = await api("/admin/session", { body: { email: "admin@variants.test", password } });
   assert.equal(administrator.status, 200);
@@ -228,15 +232,17 @@ test("a failed order write restores variant stock and availability before a retr
   const p = (await admin("/admin/products", { body: { ...copy, variants: [{ ...copy.variants[0], stock: 1 }] } })).data;
   const stockBefore = await archive("product"), ordersBefore = await archive("order");
   const body = input("retry-after-write-failure", [{ productId: p.id, variantId: p.variants[0].id, quantity: 1 }]);
-  const blockedFile = path.join(directory, "order.json.tmp");
-  await fs.mkdir(blockedFile);
+  const database = new DatabaseSync(path.join(directory, databaseName));
+  database.exec(`CREATE TRIGGER reject_order BEFORE INSERT ON records WHEN NEW.type = 'order'
+    BEGIN SELECT RAISE(ABORT, 'simulated order insert failure'); END`);
   try {
     assert.equal((await api("/orders", { body })).status, 500);
     assert.deepEqual(await archive("product"), stockBefore);
     assert.deepEqual(await archive("order"), ordersBefore);
     assert.deepEqual((await admin(`/admin/products/${p.id}`)).data, p);
   } finally {
-    await fs.rmdir(blockedFile);
+    database.exec("DROP TRIGGER reject_order");
+    database.close();
   }
   assert.equal((await api("/orders", { body })).status, 201);
   assert.equal((await api("/orders", { body })).status, 200);

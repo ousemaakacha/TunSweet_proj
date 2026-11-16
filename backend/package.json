@@ -6,9 +6,13 @@
     "build-schema": "node build-schema.js",
     "start": "npm run build-schema && node server.js",
     "dev": "npm run build-schema && node --watch server.js",
-    "admin:create": "node create-admin.js"
+    "admin:create": "node create-admin.js",
+    "storage:migrate": "npm run build-schema && node migrate-storage.js"
   },
   "type": "module",
+  "engines": {
+    "node": ">=24.11.1"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",
